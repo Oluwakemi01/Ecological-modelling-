@@ -1,0 +1,69 @@
+---
+title: "Modelling class"
+author: "Kemi"
+date: '2022-10-18'
+output: html_document
+---
+setwd("~/Documents/JOB/practical 2")
+#Modelling practical class
+```{r setup, include=FALSE}
+#The model parameters Max DIN uptake and ALgae
+#install.packages("deSolve")
+library(deSolve)
+Parms<-c(
+  pmax =1, #(/day) maximum DIN uptake rate of the alage
+  ksDIN=1  #[umol N/l] half saturation constant for DIN uptake
+)
+ #state variables.. all concentrations have to be in mmolN/m3. ALgae= 0.1 and DIN=10(different from note)
+states <-c (DIN = 10, PHYTO = 0.1)
+#the model function
+Batch <- function(t,y,Parms)
+{with(as.list(c(y, Parms)), {DINuptake <- pmax *DIN/(DIN+ksDIN)*PHYTO
+          DINuptakeSpecific<- pmax *DIN/(DIN+ksDIN)
+          dDIN <- -DINuptake
+          dPHYTO <- DINuptake
+          TotalN<- DIN+PHYTO
+          return (list(c(dDIN,dPHYTO), 
+                       TotalN = TotalN, DINuptake=DINuptake, DINuptakeSpecific=DINuptakeSpecific ))})}
+#end of model equations
+```
+
+
+# MODEL RUN first we need to define the time steps
+```{r cars}
+NYEARS <- 0.05 #number of years of integration
+dt <- 0.005 #time step
+times <- seq(from =0,to = NYEARS*365, by=dt)
+#solving the problem
+yini <-states 
+for (i in 1:NYEARS) {
+  p <- ode (y =yini, times = times, func = Batch, parms= Parms)
+  yini <- p[nrow(p), 2: (length(states)+1)]
+}
+
+#plotting the input variables and state variables
+plot(p, mfrow = c(3, 2), which = 1:5)
+#phase plot
+plot(p[,2],p[,3],xlab="DIN", ylab= "PHYTO")
+
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+Parms2<- Parms
+Parms2["pmax"]<- 0.5 # instead of 1
+yini <-states 
+for (i in 1:NYEARS) {
+  p <- ode (y =yini, times = times, func = Batch, parms= Parms2)
+  yini <- p[nrow(p), 2: (length(states)+1)]
+}
+plot(p, mfrow =c(3, 2), which= 1:5)
+plot(p[,2],p[,6],xlab = "DIN", ylab ="SpecificDIN Uptake")
+```
+
+

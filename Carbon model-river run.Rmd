@@ -1,0 +1,96 @@
+---
+title: "carbon model"
+author: "Kemi"
+date: '2022-11-07'
+output: html_document
+ setwd("~/Documents/JOB/Liege r sessions")
+---
+install.packages("deSolve")
+list of all the paramters and their values
+```{r}
+library(deSolve)
+Parms <- c (
+  area = 1000000, # [m2]
+  migrate= 10000, #[kg C/day] amount of salmon entering the river system
+  sprate = 0.05,  # [/day] spawning plus death of salmon
+  ingrate = 0.02, # [/day] bear ingestion rate
+  ksSalmon = 0.01, #[kg c/m2] half saturation coeff for ingestion bear
+  huntrate= 0.01/365, # [/day] death by hunting ( and other losses for bear)
+  ploss = 0.5,  #[-] the loss fraction of ingested salmon to carcass
+  presp = 0.4,  # [-]respired fraction of assimilated mass
+  decayrate = 0.001, # [/day] decay rate of carcasses
+  scavrate = 0.02,  #[/day] ingestion rate of scavengers
+  ksCarcass= 0.002, #[kg C/m2] half saturation coeff for ingestion scavenger
+  lossrate = 1/365  #[/day] loss rate of scavengers
+)
+States <- c (state <-c(BEAR = 0.01, SALMON =0, SCAVENGER = 0.005, CARCASS = 0.001))#units = kgc/m2
+```
+
+## R Markdown
+
+
+
+```{r}
+RiverRun <- function(t, state, params) {with (as.list (c(state, params)),{
+  #rate expressions describing sources abd sinks- all in units of [kgc/m2/day] the functions are the equations
+  Ingestion= ingrate * SALMON / (SALMON + ksSalmon) * BEAR
+  Migration = migrate/area
+  Spawn_death = sprate * SALMON
+  Hunt_death = huntrate* BEAR
+  ScavIngest = scavrate * CARCASS/ (CARCASS+ ksCarcass) * SCAVENGER
+  Scavloss = lossrate * SCAVENGER
+  Decay = decayrate * CARCASS
+  
+  #Mass balance [kgC/m2/day] for all the state variables which is a result of sources- sinks
+  dBEAR = Ingestion * (1-ploss)*(1-presp) - Hunt_death
+  dSALMON= Migration - Ingestion - Spawn_death
+  dCARCASS = Ingestion*ploss - Decay - ScavIngest + Hunt_death
+  dSCAVENGER = ScavIngest * (1-ploss)*(1-presp) -Scavloss
+  list(c(dBEAR, dSALMON, dSCAVENGER, dCARCASS)) # means specifying the rate of change which has to be in same order as definition of variables
+ 
+})}
+```
+
+## Including Plots
+
+
+
+```{r}
+# to run the model, we need to first define the time steps at which we want to resolve the model.
+NYEARS <- 0.15 #number of years of integration
+dt <- 0.05 #time step
+times <- seq(from =0, to =NYEARS*365, by =dt)
+ #using ode from deSolve to solve the model
+yini<- States 
+for (i in 1:NYEARS) {
+  P <- ode (y = yini,
+            times =times,
+            func = RiverRun,
+            parms = Parms) #func means function to integrate and parms means parameters
+yini <- P[nrow(P), 2: (length (States)+1)]}
+
+#plotting the state variables and output variables
+plot(P, mfrow =c(2, 2), which = 1:4 )
+```
+#the result shows evolution in time of state variables which an intial condition of 0, salmonn increase and reaches a plato because the source of salmin which is migration reduces at some point and there is increase consumption by bears.
+# the carcass a re increasing and not consumed fast enought o reach a plato same as a Bear.
+# for scavenger the intial condition can not be mantained byt source and sink, the sink of scavengers are larger than the source the ingestion of carcass at beginign where small but the number increaed as the bear increased and consumption of salmonn increased (due to natural mortality of scavengers)
+```{r}
+Parms2 <- Parms
+Parms2["ingrate"] <- 0.04 # instead of 0.02
+yini <- States
+for (i in 1: NYEARS){
+  P2  <- ode (y = yini,
+              times = times,
+              func = RiverRun,
+              parms = Parms2)
+        yini <- P2 [nrow(P2), 2: (length(States)+1)]
+}
+
+# Visualizing plot with red color = P2
+plot (P, P2, mfrow = c(2, 2), which =1:4)
+legend ("topleft", c("ingrate = 0.02", "ingrate = 0.04"), col =1:2, lty = 1:2)
+```
+#we can observe that salmon doesn't change because the balance of source and sink remains the same because the migration, and the ingestion rate of bear is increasing becasue in the sink the bear ingest increase and the  spawn death reduce but the sink is still the same
+#increased flow to carcass and to the scavengers. all this results from a balance between source and sinks
+# for the last question you have to multiply by surface

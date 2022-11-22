@@ -1,0 +1,89 @@
+---
+title: "NPZDmodel for marine bay"
+author: "Kemi"
+date: '2022-11-15'
+output: html_document
+ setwd("~/Documents/JOB/Liege r sessions")
+---
+
+```{r}
+library(deSolve)
+require(marelac) # chemical properties
+require(diagram) # Plotting foodweb
+require(FME) # Sensitivity Analysis
+```
+
+
+
+
+
+```{r}
+Parms <- c(
+depth = 10, # [m ] depth of the bay
+maxUptake = 1.0, # [/day]
+ksPAR = 140, # [μEinst/m2/s]
+ksDIN = 1.0, # [mmolN/m3]
+maxGrazing = 1.0, # [/day]
+ksGrazing = 1.0, # [mmolN/m3]
+pFaeces = 0.3, # [-]
+excretionRate = 0.1, # [/day]
+mortalityRate = 0.4, # [/(mmolN/m3)/day]
+mineralisationRate = 0.05 # [/day]
+)
+# state variables
+States <- c(DIN = 15, 
+PHYTO = 0.5, 
+ZOO = 0.3,  
+DET = 5.0) 
+```
+
+
+
+```{r}
+#model function
+NPZD <- function(t, y, parms)
+{
+with(as.list(c(y, parms)),{
+# Forcing function = Light a sine function
+# light = (540+440*sin(2*pi*t/365-1.4)), 50% of light is PAR
+# spring starts at day 81 (22 March)
+PAR <- 0.5*(540+440*sin(2*pi*(t-81)/365)) # this help to have a seasonal variation of sunlight which is more in summer and low in winter
+# Rate expressions - all in units of [mmolN/m3/day]
+DINuptake <- maxUptake * PAR/(PAR+ksPAR) * DIN/(DIN+ksDIN)*PHYTO
+Grazing <- maxGrazing* PHYTO/(PHYTO+ksGrazing)*ZOO
+Faeces <- pFaeces * Grazing
+ZooGrowth <- (1-pFaeces) * Grazing
+Excretion <- excretionRate * ZOO
+Mortality <- mortalityRate * ZOO * ZOO
+Mineralisation <- mineralisationRate * DET
+# Mass balances [molN/m3/day]
+dDIN <- Mineralisation + Excretion - DINuptake
+dPHYTO <- DINuptake - Grazing
+dZOO <- ZooGrowth - Excretion - Mortality
+dDET <- Mortality - Mineralisation + Faeces
+TotalN <- DIN+PHYTO+ZOO+DET # mmolN/m3
+# the output
+return (list(c(dDIN, dPHYTO, dZOO, dDET), # the rates of change
+TotalN = TotalN, PAR = PAR) # ordinary output variable
+)
+})
+} 
+```
+
+```{r}
+#time step of the model
+NYEARS <- 2. # number of years of integration
+dt <- 1. # time step
+times <- seq(from = 0, to = NYEARS*365, by = dt)
+#solving the model
+yini <- States
+for (i in 1:NYEARS){
+P <- ode (y = yini,
+          times = times,
+          func = NPZD,
+          parms = Parms )
+yini <- P[nrow(P), 2: (length(States)+1)]
+}
+plot(P, mfrow = c(3, 2), which = 1:6)
+```
+

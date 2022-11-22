@@ -1,0 +1,98 @@
+---
+title: "NPZD2model for marine bay"
+author: "Kemi"
+date: '2022-11-15'
+output: html_document
+ setwd("~/Documents/JOB/Liege r sessions")
+---
+
+```{r}
+library(deSolve)
+require(marelac) # chemical properties
+require(diagram) # Plotting foodweb
+require(FME) # Sensitivity Analysis
+```
+
+
+
+```{r}
+Parms <- c(
+depth = 10, # [m ] depth of the bay
+maxUptake = 1.0, # [/day]
+ksPAR = 140, # [μEinst/m2/s]
+ksDIN = 1.0, # [mmolN/m3]
+maxGrazing = 1.0, # [/day]
+ksGrazing = 1.0, # [mmolN/m3]
+pFaeces = 0.3, # [-]
+excretionRate = 0.1, # [/day]
+mortalityRate = 0.4, # [/(mmolN/m3)/day]
+mineralisationRate = 0.05, # [/day]
+sinkingrate = 1 # [m/day]
+)
+#state variables
+States <- c(DIN = 15, # mmolN/m3 initial concentration of dissolved inorganic nitrogen
+PHYTO = 0.5, # mmolN/m3 initial phytoplankton biomass
+ZOO = 0.3, # mmolNm3 initial zooplankton biomass
+DET = 5.0, # mmolNm3 initial detritus biomass
+BOT_DET = 1) #mmolN/m2 initial bottom detritus biomass
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+#the model function
+NPZD2 <- function(t, y, parms)
+{
+with(as.list(c(y, parms)),{
+# Forcing function = Light a sine function
+# light = (540+440*sin(2*pi*t/365-1.4)), 50% of light is PAR
+# spring starts at day 81 (22 March)
+PAR <- 0.5*(540+440*sin(2*pi*(t-81)/365))
+# Rate expressions - in units of [mmolN/m3/day] or mmolN/m2/d
+DINuptake <- maxUptake * PAR/(PAR+ksPAR) * DIN/(DIN+ksDIN)*PHYTO # mmolN/m3/d
+Grazing <- maxGrazing* PHYTO/(PHYTO+ksGrazing)*ZOO # mmolN/m3/d
+Faeces <- pFaeces * Grazing # mmolN/m3/d
+ZooGrowth <- (1-pFaeces) * Grazing # mmolN/m3/d
+Excretion <- excretionRate * ZOO # mmolN/m3/d
+Mortality <- mortalityRate * ZOO * ZOO # mmolN/m3/d
+Mineralisation <- mineralisationRate * DET # mmolN/m3/d
+SinkDet <- sinkingrate * DET # mmolN/m2/d !note the unit
+SinkPhy <- sinkingrate * PHYTO # mmolN/m2/d !
+BotMin <- mineralisationRate * BOT_DET # mmolN/m2/d ! also a first order
+# Mass balances [molN/m3/day]
+dDIN <- Mineralisation + Excretion - DINuptake + BotMin / depth # mmolN/m3/d so we divide by depth because of the sinking phyto and det that's why we havemmolN/m3/d
+dPHYTO <- DINuptake - Grazing - SinkPhy / depth # mmolN/m3/d
+dZOO <- ZooGrowth - Excretion - Mortality # mmolN/m3/d
+dDET <- Mortality - Mineralisation + Faeces - SinkDet / depth # mmolN/m3/d
+dBOT_DET <- SinkDet + SinkPhy - BotMin # mmolN/m2/d !
+TotalN <- (DIN+PHYTO+ZOO+DET)*depth + BOT_DET
+# the output
+return (list(c(dDIN, dPHYTO, dZOO, dDET, dBOT_DET), # the rates of change
+TotalN = TotalN, PAR = PAR) # ordinary output variable
+)
+})
+} # end of model equations
+```
+
+```{r}
+#determine the time steps
+NYEARS <- 2. # number of years of integration
+dt <- 1. # time step
+times <- seq(from = 0, to = NYEARS*365, by = dt)
+#solving the model
+yini <- States
+for (i in 1:NYEARS){
+P <- ode (y = yini,
+          times = times,
+          func = NPZD2,
+          parms = Parms )
+yini <- P[nrow(P), 2: (length(States)+1)]
+}
+plot(P, mfrow = c(4, 2), which = 1:7)
+last <- P[nrow(P),]
+c(pelagic = sum(last[3:5]*Parms["depth"]), benthic = last["BOT_DET"])
+```
+
+
